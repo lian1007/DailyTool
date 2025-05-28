@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DailyTool</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.css" rel="stylesheet" />
+  <style>
+    body {
+      background-color: #f8f9fa;
+    }
+    .upload-area {
+      border: 2px dashed #d0d5dd;
+      border-radius: 12px;
+      padding: 50px 20px;
+      text-align: center;
+      background-color: #f9fafb;
+      transition: background-color 0.3s;
+      cursor: pointer;
+      position: relative;
+    }
+    .upload-area.dragover {
+      background-color: #e0e7ff;
+    }
+    .upload-area img.upload-icon {
+      width: 50px;
+      margin-bottom: 16px;
+    }
+    .upload-area p {
+      font-size: 1.1rem;
+      color: #6b7280;
+    }
+    .upload-area input[type="file"] {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+    #preview-container {
+      height: 400px;
+      max-width: 413px;
+      overflow: hidden;
+      display: none;
+      margin: 0 auto; /* 水平置中 */
+    }
+    #preview-container.active {
+      display: block;
+    }
+    img {
+      max-width: 100%;
+    }
+    #layout-preview {
+      background-color: #fff;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <!-- Header -->
+  <nav class="navbar navbar-light bg-white shadow-sm">
+    <div class="container">
+      <a class="navbar-brand d-flex align-items-center" href="#">
+        <img src="Img/Logo.png" alt="Logo" width="40" height="40" class="me-2">
+        <strong>DailiTool</strong>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <div class="container py-5">
+    <h1 class="text-center mb-4">一寸證件照產生器</h1>
+
+    <div id="drop-area" class="upload-area mb-4">
+      <img src="Img/cloud-computing.png" alt="Upload Icon" class="upload-icon">
+      <p>拖曳圖片到此處或點擊此區域上傳</p>
+      <input type="file" id="upload" accept="image/*" />
+    </div>
+
+    <div id="preview-container" class="mb-3 text-center">
+      <img id="preview" src="Img/a.png" alt="預覽圖片" />
+    </div>
+
+    <div class="row mt-4">
+      <div class="col-md-6 text-center">
+        <button id="crop" class="btn btn-primary me-2">裁切並預覽</button>
+        <button id="download" class="btn btn-success">下載拼圖</button>
+      </div>
+      <div class="col-md-6 text-center">
+        <h5 class="mb-2">排版預覽</h5>
+        <canvas id="layout-preview" style="max-width: 100%; border: 1px solid #ccc;"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="canvas" style="display: none;"></canvas>
+
+  <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js"></script>
+  <script>
+    const upload = document.getElementById("upload");
+    const preview = document.getElementById("preview");
+    const previewContainer = document.getElementById("preview-container");
+    const canvas = document.getElementById("canvas");
+    const cropButton = document.getElementById("crop");
+    const dropArea = document.getElementById("drop-area");
+    let cropper;
+    let sheetCanvasBlob = null; // 儲存合成圖 blob
+
+    function handleFiles(file) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        preview.onload = function () {
+          previewContainer.classList.add("active");
+          if (cropper) cropper.destroy();
+          cropper = new Cropper(preview, {
+            aspectRatio: 300 / 420,
+            viewMode: 1,
+            autoCropArea: 1,
+            responsive: true,
+            zoomable: false,
+            scalable: false,
+            movable: false,
+            dragMode: 'none',
+            background: true
+          });
+        };
+        preview.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    upload.addEventListener("change", function () {
+      const file = this.files[0];
+      if (file) handleFiles(file);
+    });
+
+    previewContainer.addEventListener('wheel', function(e) {
+      e.preventDefault();
+    }, { passive: false });
+
+
+    cropButton.addEventListener("click", function () {
+      if (!cropper) return;
+
+      const croppedCanvas = cropper.getCroppedCanvas({
+        width: 300,
+        height: 420
+      });
+
+      const rows = 2;
+      const cols = 5;
+      const photoW = 300;
+      const photoH = 420;
+      const padding = 20;
+      const margin = 40;
+
+      const canvasW = cols * photoW + (cols - 1) * padding + margin * 2;
+      const canvasH = rows * photoH + (rows - 1) * padding + margin * 2;
+
+      const sheetCanvas = document.createElement("canvas");
+      sheetCanvas.width = canvasW;
+      sheetCanvas.height = canvasH;
+      const ctx = sheetCanvas.getContext("2d");
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, canvasW, canvasH);
+
+      const lineLen = 15;
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 2;
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = margin + col * (photoW + padding);
+          const y = margin + row * (photoH + padding);
+          ctx.drawImage(croppedCanvas, x, y);
+
+          // 四角反向裁切線
+          // 左上 ┘
+          ctx.beginPath();
+          ctx.moveTo(x - lineLen, y);
+          ctx.lineTo(x, y);
+          ctx.lineTo(x, y - lineLen);
+          ctx.stroke();
+
+          // 右上 └
+          ctx.beginPath();
+          ctx.moveTo(x + photoW + lineLen, y);
+          ctx.lineTo(x + photoW, y);
+          ctx.lineTo(x + photoW, y - lineLen);
+          ctx.stroke();
+
+          // 左下 ┐
+          ctx.beginPath();
+          ctx.moveTo(x - lineLen, y + photoH);
+          ctx.lineTo(x, y + photoH);
+          ctx.lineTo(x, y + photoH + lineLen);
+          ctx.stroke();
+
+          // 右下 ┌
+          ctx.beginPath();
+          ctx.moveTo(x + photoW + lineLen, y + photoH);
+          ctx.lineTo(x + photoW, y + photoH);
+          ctx.lineTo(x + photoW, y + photoH + lineLen);
+          ctx.stroke();
+        }
+      }
+
+      // 顯示預覽圖
+      const layoutPreview = document.getElementById("layout-preview");
+      layoutPreview.width = canvasW;
+      layoutPreview.height = canvasH;
+      layoutPreview.getContext("2d").drawImage(sheetCanvas, 0, 0);
+
+      // 建立 Blob 給下載用
+      sheetCanvas.toBlob(function (blob) {
+        sheetCanvasBlob = blob;
+      });
+    });
+    
+
+
+    document.getElementById("download").addEventListener("click", function () {
+      if (!sheetCanvasBlob) {
+        alert("請先裁切並預覽");
+        return;
+      }
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(sheetCanvasBlob);
+      a.download = "passport_sheet_preview.jpg";
+      a.click();
+    });
+
+    // 拖曳功能
+    dropArea.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropArea.classList.add("dragover");
+    });
+    dropArea.addEventListener("dragleave", () => {
+      dropArea.classList.remove("dragover");
+    });
+    dropArea.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropArea.classList.remove("dragover");
+      const file = e.dataTransfer.files[0];
+      if (file) handleFiles(file);
+    });
+
+  </script>
+</body>
+</html>
